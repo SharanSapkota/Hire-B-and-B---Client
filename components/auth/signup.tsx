@@ -11,14 +11,19 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Bike, AlertCircle } from "lucide-react"
+import { signUp } from "@/services/userService"
 
 interface SignupProps {
   onSwitchToLogin: () => void
 }
 
 export function Signup({ onSwitchToLogin }: SignupProps) {
-  const signup = useStore((state) => state.signup)
-  const [name, setName] = useState("")
+
+  const [firstName, setFirstName] = useState("")
+  const [secondName, setSecondName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [dob, setDob] = useState("")
+  const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -31,9 +36,9 @@ export function Signup({ onSwitchToLogin }: SignupProps) {
     setError("")
     setIsLoading(true)
 
-    // Validation
-    if (!name || !email || !password || !confirmPassword) {
-      setError("Please fill in all fields")
+
+    if (!firstName || !lastName || !dob || !phone || !email || !password || !confirmPassword) {
+      setError("Please fill in all required fields")
       setIsLoading(false)
       return
     }
@@ -56,10 +61,18 @@ export function Signup({ onSwitchToLogin }: SignupProps) {
       return
     }
 
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    const result = signup(name, email, password, role)
+    const result = await signUp({
+      email,
+      phone,
+      firstName,
+      secondName,
+      lastName,
+      dob,
+      password,
+      role
+    });
+    // Call store signup (synchronous)
+    // const result = signup(firstName, secondName || undefined, lastName, dob, phone, email, password, role)
 
     if (!result.success) {
       setError(result.error || "Signup failed")
@@ -89,17 +102,69 @@ export function Signup({ onSwitchToLogin }: SignupProps) {
               </Alert>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="John Doe"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={isLoading}
-                required
-              />
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name</Label>
+                <Input
+                  id="firstName"
+                  type="text"
+                  placeholder="John"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  disabled={isLoading}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="secondName">Second Name (optional)</Label>
+                <Input
+                  id="secondName"
+                  type="text"
+                  placeholder="Middle"
+                  value={secondName}
+                  onChange={(e) => setSecondName(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input
+                  id="lastName"
+                  type="text"
+                  placeholder="Doe"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  disabled={isLoading}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dob">Date of Birth</Label>
+                <Input
+                  id="dob"
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  disabled={isLoading}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+1 202-555-0123"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={isLoading}
+                  required
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

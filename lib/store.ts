@@ -17,7 +17,11 @@ interface AppState {
   // Auth actions
   login: (email: string, password: string) => { success: boolean; error?: string }
   signup: (
-    name: string,
+    firstName: string,
+    secondName: string | undefined,
+    lastName: string,
+    dob: string,
+    phone: string,
     email: string,
     password: string,
     role: "owner" | "renter",
@@ -95,7 +99,7 @@ export const useStore = create<AppState>()(
         return { success: true }
       },
 
-      signup: (name, email, password, role) => {
+      signup: (firstName, secondName, lastName, dob, phone, email, password, role) => {
         const existingUser = get().users.find((u) => u.email === email)
 
         if (existingUser) {
@@ -106,9 +110,16 @@ export const useStore = create<AppState>()(
           return { success: false, error: "Password must be at least 6 characters" }
         }
 
+        const name = `${firstName}${secondName ? ` ${secondName}` : ''} ${lastName}`.trim()
+
         const newUser: User = {
           id: Date.now().toString(),
           name,
+          firstName,
+          secondName,
+          lastName,
+          dob,
+          phone,
           email,
           role,
           rating: 5,
@@ -123,6 +134,8 @@ export const useStore = create<AppState>()(
 
         return { success: true }
       },
+
+     
 
       logout: () => set({ currentUser: null }),
 

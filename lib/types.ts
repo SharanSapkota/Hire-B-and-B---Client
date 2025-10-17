@@ -3,6 +3,10 @@ export type UserRole = "owner" | "renter" | "admin"
 export interface User {
   id: string
   name: string
+  firstName?: string
+  secondName?: string
+  lastName?: string
+  dob?: string
   email: string
   role: UserRole
   rating: number

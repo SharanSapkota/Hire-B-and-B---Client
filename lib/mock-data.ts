@@ -4,6 +4,10 @@ export const mockUsers: User[] = [
   {
     id: "1",
     name: "John Owner",
+    firstName: "John",
+    lastName: "Owner",
+    dob: "1985-06-15",
+    phone: "+12025550123",
     email: "owner@example.com",
     role: "owner",
     rating: 4.8,
@@ -13,6 +17,10 @@ export const mockUsers: User[] = [
   {
     id: "2",
     name: "Sarah Renter",
+    firstName: "Sarah",
+    lastName: "Renter",
+    dob: "1992-03-02",
+    phone: "+12025550456",
     email: "renter@example.com",
     role: "renter",
     rating: 4.5,
@@ -22,6 +30,10 @@ export const mockUsers: User[] = [
   {
     id: "admin",
     name: "Super Admin",
+    firstName: "Super",
+    lastName: "Admin",
+    dob: "1990-01-01",
+    phone: "+12025550999",
     email: "admin@hirebellbreaks.com",
     role: "admin",
     rating: 5,
