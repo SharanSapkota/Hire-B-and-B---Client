@@ -1,10 +1,11 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Map, Bike, History, X } from "lucide-react"
+import { LayoutDashboard, Map, Bike, History, X, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useStore } from "@/lib/store"
 
-type View = "dashboard" | "map" | "browse" | "rentals"
+type View = "dashboard" | "map" | "browse" | "rentals" | "profile"
 
 interface RenterSidebarProps {
   activeView: View
@@ -14,12 +15,19 @@ interface RenterSidebarProps {
 }
 
 export function RenterSidebar({ activeView, onViewChange, isMobileMenuOpen, setIsMobileMenuOpen }: RenterSidebarProps) {
+  const permissions = useStore((state) => state.permissions)
+
   const menuItems = [
-    { id: "dashboard" as View, label: "Dashboard", icon: LayoutDashboard },
-    { id: "map" as View, label: "Map", icon: Map },
-    { id: "browse" as View, label: "Browse Bikes", icon: Bike },
-    { id: "rentals" as View, label: "My Rentals", icon: History },
+    { id: "browse" as View, label: "Browse Bikes", icon: Bike, permission: "browseBikes" },
+    { id: "map" as View, label: "Map", icon: Map, permission: "map" },
+    { id: "dashboard" as View, label: "Dashboard", icon: LayoutDashboard, permission: "dashboard" },
+    { id: "rentals" as View, label: "My Rentals", icon: History, permission: "rentals" },
+    { id: "profile" as View, label: "Profile", icon: User, permission: "profile" },
   ]
+
+  const visibleMenuItems = menuItems.filter(
+    (item) => permissions.renter[item.permission as keyof typeof permissions.renter],
+  )
 
   return (
     <>
@@ -38,7 +46,7 @@ export function RenterSidebar({ activeView, onViewChange, isMobileMenuOpen, setI
         </div>
 
         <nav className="flex flex-col gap-2 p-4">
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon
             return (
               <button

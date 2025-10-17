@@ -1,4 +1,4 @@
-export type UserRole = "owner" | "renter"
+export type UserRole = "owner" | "renter" | "admin"
 
 export interface User {
   id: string
@@ -8,6 +8,9 @@ export interface User {
   rating: number
   totalRentals: number
   avatar?: string
+  verified?: boolean
+  phone?: string
+  bio?: string
 }
 
 export interface Bike {
@@ -52,4 +55,27 @@ export interface Rental {
   endDate: string
   status: "active" | "completed" | "cancelled"
   totalPrice: number
+}
+
+export interface Category {
+  id: string
+  name: string
+  description: string
+  icon: string
+}
+
+export interface Permissions {
+  renter: {
+    browseBikes: boolean
+    map: boolean
+    dashboard: boolean
+    rentals: boolean
+    profile: boolean
+  }
+  owner: {
+    dashboard: boolean
+    bikes: boolean
+    rentals: boolean
+    profile: boolean
+  }
 }

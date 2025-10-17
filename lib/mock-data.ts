@@ -1,4 +1,4 @@
-import type { Bike, Review, Rental, User } from "./types"
+import type { Bike, Review, Rental, User, Category } from "./types"
 
 export const mockUsers: User[] = [
   {
@@ -18,6 +18,16 @@ export const mockUsers: User[] = [
     rating: 4.5,
     totalRentals: 12,
     avatar: "/bike-renter-avatar.jpg",
+  },
+  {
+    id: "admin",
+    name: "Super Admin",
+    email: "admin@hirebellbreaks.com",
+    role: "admin",
+    rating: 5,
+    totalRentals: 0,
+    avatar: "/admin-avatar.jpg",
+    verified: true,
   },
 ]
 
@@ -279,4 +289,16 @@ export const mockRentals: Rental[] = [
     status: "completed",
     totalPrice: 50,
   },
+]
+
+export const mockCategories: Category[] = [
+  { id: "1", name: "Mountain", description: "Off-road and trail bikes", icon: "🏔️" },
+  { id: "2", name: "City", description: "Urban commuting bikes", icon: "🏙️" },
+  { id: "3", name: "Road", description: "Speed and racing bikes", icon: "🏁" },
+  { id: "4", name: "Electric", description: "E-bikes with pedal assist", icon: "⚡" },
+  { id: "5", name: "BMX", description: "Stunt and trick bikes", icon: "🎪" },
+  { id: "6", name: "Hybrid", description: "Versatile all-purpose bikes", icon: "🔄" },
+  { id: "7", name: "Folding", description: "Compact portable bikes", icon: "📦" },
+  { id: "8", name: "Cargo", description: "Heavy-duty transport bikes", icon: "📦" },
+  { id: "9", name: "Kids", description: "Children's bikes", icon: "👶" },
 ]

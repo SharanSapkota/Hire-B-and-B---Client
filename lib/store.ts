@@ -2,8 +2,8 @@
 
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { User, Bike, Review, Rental } from "./types"
-import { mockUsers, mockBikes, mockReviews, mockRentals } from "./mock-data"
+import type { User, Bike, Review, Rental, Category, Permissions } from "./types"
+import { mockUsers, mockBikes, mockReviews, mockRentals, mockCategories } from "./mock-data"
 
 interface AppState {
   currentUser: User | null
@@ -11,9 +11,22 @@ interface AppState {
   bikes: Bike[]
   reviews: Review[]
   rentals: Rental[]
+  categories: Category[]
+  permissions: Permissions
 
   // Auth actions
+  login: (email: string, password: string) => { success: boolean; error?: string }
+  signup: (
+    name: string,
+    email: string,
+    password: string,
+    role: "owner" | "renter",
+  ) => { success: boolean; error?: string }
+  logout: () => void
   setCurrentUser: (user: User | null) => void
+  verifyAccount: () => void
+  skipVerification: () => void
+  updateProfile: (updates: Partial<User>) => { success: boolean; error?: string }
 
   // Bike actions
   addBike: (bike: Omit<Bike, "id" | "rating" | "likes" | "totalRentals" | "dateAdded">) => void
@@ -28,6 +41,14 @@ interface AppState {
   createRental: (rental: Omit<Rental, "id">) => void
   updateRentalStatus: (id: string, status: Rental["status"]) => void
 
+  // Admin actions
+  addCategory: (category: Omit<Category, "id">) => void
+  updateCategory: (id: string, category: Partial<Category>) => void
+  deleteCategory: (id: string) => void
+  updateUserRole: (userId: string, role: "owner" | "renter") => void
+  deleteUser: (userId: string) => void
+  updatePermissions: (role: "renter" | "owner", feature: string, enabled: boolean) => void
+
   // Initialize with mock data
   initializeMockData: () => void
 }
@@ -40,8 +61,117 @@ export const useStore = create<AppState>()(
       bikes: [],
       reviews: [],
       rentals: [],
+      categories: [],
+      permissions: {
+        renter: {
+          browseBikes: true,
+          map: true,
+          dashboard: true,
+          rentals: true,
+          profile: true,
+        },
+        owner: {
+          dashboard: true,
+          bikes: true,
+          rentals: true,
+          profile: true,
+        },
+      },
+
+      login: (email, password) => {
+        const user = get().users.find((u) => u.email === email)
+
+        if (!user) {
+          return { success: false, error: "User not found" }
+        }
+
+        // In a real app, you'd verify the password hash
+        // For demo purposes, we'll just check if password is not empty
+        if (!password || password.length < 6) {
+          return { success: false, error: "Invalid password" }
+        }
+
+        set({ currentUser: user })
+        return { success: true }
+      },
+
+      signup: (name, email, password, role) => {
+        const existingUser = get().users.find((u) => u.email === email)
+
+        if (existingUser) {
+          return { success: false, error: "Email already exists" }
+        }
+
+        if (password.length < 6) {
+          return { success: false, error: "Password must be at least 6 characters" }
+        }
+
+        const newUser: User = {
+          id: Date.now().toString(),
+          name,
+          email,
+          role,
+          rating: 5,
+          totalRentals: 0,
+          verified: false,
+        }
+
+        set((state) => ({
+          users: [...state.users, newUser],
+          currentUser: newUser,
+        }))
+
+        return { success: true }
+      },
+
+      logout: () => set({ currentUser: null }),
 
       setCurrentUser: (user) => set({ currentUser: user }),
+
+      verifyAccount: () => {
+        const currentUser = get().currentUser
+        if (!currentUser) return
+
+        const updatedUser = { ...currentUser, verified: true }
+        set((state) => ({
+          currentUser: updatedUser,
+          users: state.users.map((u) => (u.id === currentUser.id ? updatedUser : u)),
+        }))
+      },
+
+      skipVerification: () => {
+        const currentUser = get().currentUser
+        if (!currentUser) return
+
+        const updatedUser = { ...currentUser, verified: true }
+        set((state) => ({
+          currentUser: updatedUser,
+          users: state.users.map((u) => (u.id === currentUser.id ? updatedUser : u)),
+        }))
+      },
+
+      updateProfile: (updates) => {
+        const currentUser = get().currentUser
+        if (!currentUser) {
+          return { success: false, error: "No user logged in" }
+        }
+
+        // Validate email if being updated
+        if (updates.email && updates.email !== currentUser.email) {
+          const emailExists = get().users.some((u) => u.email === updates.email && u.id !== currentUser.id)
+          if (emailExists) {
+            return { success: false, error: "Email already in use" }
+          }
+        }
+
+        const updatedUser = { ...currentUser, ...updates }
+        set((state) => ({
+          currentUser: updatedUser,
+          users: state.users.map((u) => (u.id === currentUser.id ? updatedUser : u)),
+        }))
+
+        return { success: true }
+      },
 
       addBike: (bike) =>
         set((state) => ({
@@ -105,13 +235,72 @@ export const useStore = create<AppState>()(
           }
         }),
 
+      addCategory: (category) =>
+        set((state) => ({
+          categories: [
+            ...state.categories,
+            {
+              ...category,
+              id: Date.now().toString(),
+            },
+          ],
+        })),
+
+      updateCategory: (id, updatedCategory) =>
+        set((state) => ({
+          categories: state.categories.map((cat) => (cat.id === id ? { ...cat, ...updatedCategory } : cat)),
+        })),
+
+      deleteCategory: (id) =>
+        set((state) => ({
+          categories: state.categories.filter((cat) => cat.id !== id),
+        })),
+
+      updateUserRole: (userId, role) =>
+        set((state) => ({
+          users: state.users.map((user) => (user.id === userId ? { ...user, role } : user)),
+        })),
+
+      deleteUser: (userId) =>
+        set((state) => ({
+          users: state.users.filter((user) => user.id !== userId),
+          bikes: state.bikes.filter((bike) => bike.ownerId !== userId),
+        })),
+
+      updatePermissions: (role, feature, enabled) =>
+        set((state) => ({
+          permissions: {
+            ...state.permissions,
+            [role]: {
+              ...state.permissions[role],
+              [feature]: enabled,
+            },
+          },
+        })),
+
       initializeMockData: () =>
         set({
           users: mockUsers,
           bikes: mockBikes,
           reviews: mockReviews,
           rentals: mockRentals,
-          currentUser: mockUsers[0], // Default to owner
+          categories: mockCategories,
+          currentUser: null,
+          permissions: {
+            renter: {
+              browseBikes: true,
+              map: true,
+              dashboard: true,
+              rentals: true,
+              profile: true,
+            },
+            owner: {
+              dashboard: true,
+              bikes: true,
+              rentals: true,
+              profile: true,
+            },
+          },
         }),
     }),
     {

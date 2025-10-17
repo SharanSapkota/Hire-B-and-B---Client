@@ -1,10 +1,11 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, Bike, History, X } from "lucide-react"
+import { LayoutDashboard, Bike, History, X, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useStore } from "@/lib/store"
 
-type View = "dashboard" | "bikes" | "rentals"
+type View = "dashboard" | "bikes" | "rentals" | "profile"
 
 interface OwnerSidebarProps {
   activeView: View
@@ -14,11 +15,18 @@ interface OwnerSidebarProps {
 }
 
 export function OwnerSidebar({ activeView, onViewChange, isMobileMenuOpen, setIsMobileMenuOpen }: OwnerSidebarProps) {
+  const permissions = useStore((state) => state.permissions)
+
   const menuItems = [
-    { id: "dashboard" as View, label: "Dashboard", icon: LayoutDashboard },
-    { id: "bikes" as View, label: "My Bikes", icon: Bike },
-    { id: "rentals" as View, label: "Rental History", icon: History },
+    { id: "dashboard" as View, label: "Dashboard", icon: LayoutDashboard, permission: "dashboard" },
+    { id: "bikes" as View, label: "My Bikes", icon: Bike, permission: "bikes" },
+    { id: "rentals" as View, label: "Rental History", icon: History, permission: "rentals" },
+    { id: "profile" as View, label: "Profile", icon: User, permission: "profile" },
   ]
+
+  const visibleMenuItems = menuItems.filter(
+    (item) => permissions.owner[item.permission as keyof typeof permissions.owner],
+  )
 
   return (
     <>
@@ -37,7 +45,7 @@ export function OwnerSidebar({ activeView, onViewChange, isMobileMenuOpen, setIs
         </div>
 
         <nav className="flex flex-col gap-2 p-4">
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon
             return (
               <button
