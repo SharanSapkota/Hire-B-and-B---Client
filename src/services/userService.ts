@@ -1,3 +1,4 @@
+import axiosCall from "@/components/axios/app";
 import { UserSignupPayload } from "@/interface/user-interface";
 import axios from "axios";
 
@@ -6,22 +7,8 @@ export const signUp = async (payload: UserSignupPayload) => {
 
     try {
         console.log("API_BASE_URL:", process.env);
-        const response: any = await axios.post(`${process.env.API_BASE_URL + '/auth' || "http://localhost:4000/api/auth"}/signup`, {
-            firstName,
-            secondName,
-            lastName,
-            dob,
-            phone,
-            email,
-            password,
-            role
-        }, {
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
+        return await axiosCall.post('auth/signup', payload);
 
-        return response.data;
     } catch (error: any) {
         return { success: false, error: error.message || "Signup failed" };
     }

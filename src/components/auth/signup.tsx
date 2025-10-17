@@ -61,7 +61,7 @@ export function Signup({ onSwitchToLogin }: SignupProps) {
       return
     }
 
-    const result = await signUp({
+    const result: any = await signUp({
       email,
       phone,
       firstName,
