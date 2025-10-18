@@ -40,7 +40,6 @@ export function Login({ onSwitchToSignup }: LoginProps) {
       return
     }
 
-    // Simulate network delay
     await new Promise((resolve) => setTimeout(resolve, 500))
 
     const result = login(email, password)
