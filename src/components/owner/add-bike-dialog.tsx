@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus } from "lucide-react"
+import { Plus, X, Upload, LinkIcon } from "lucide-react"
 
 export function AddBikeDialog() {
   const { currentUser, addBike } = useStore()
@@ -30,11 +30,47 @@ export function AddBikeDialog() {
     category: "Mountain",
     condition: "Excellent" as "Excellent" | "Good" | "Fair" | "Needs Maintenance",
     address: "",
-    imageQuery: "",
   })
+  const [images, setImages] = useState<string[]>([])
+  const [imageUrl, setImageUrl] = useState("")
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImages((prev) => [...prev, reader.result as string])
+      }
+      reader.readAsDataURL(file)
+    })
+
+    // Reset input
+    e.target.value = ""
+  }
+
+  const handleAddImageUrl = () => {
+    if (imageUrl.trim()) {
+      setImages((prev) => [...prev, imageUrl.trim()])
+      setImageUrl("")
+    }
+  }
+
+  const handleRemoveImage = (index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index))
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    const bikeImages =
+      images.length > 0
+        ? images
+        : [
+            `/placeholder.svg?height=400&width=600&query=${formData.name}`,
+            `/placeholder.svg?height=400&width=600&query=${formData.name} side view`,
+          ]
 
     addBike({
       ownerId: currentUser!.id,
@@ -43,10 +79,7 @@ export function AddBikeDialog() {
       price: Number.parseFloat(formData.price),
       category: formData.category,
       condition: formData.condition,
-      images: [
-        `/placeholder.svg?height=400&width=600&query=${formData.imageQuery || formData.name}`,
-        `/placeholder.svg?height=400&width=600&query=${formData.imageQuery || formData.name} side view`,
-      ],
+      images: bikeImages,
       location: {
         lat: 40.7128 + Math.random() * 0.1,
         lng: -74.006 + Math.random() * 0.1,
@@ -62,8 +95,8 @@ export function AddBikeDialog() {
       category: "Mountain",
       condition: "Excellent",
       address: "",
-      imageQuery: "",
     })
+    setImages([])
     setOpen(false)
   }
 
@@ -166,15 +199,95 @@ export function AddBikeDialog() {
               />
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="imageQuery">Image Description (optional)</Label>
-              <Input
-                id="imageQuery"
-                value={formData.imageQuery}
-                onChange={(e) => setFormData({ ...formData, imageQuery: e.target.value })}
-                placeholder="red mountain bike"
-              />
-              <p className="text-xs text-muted-foreground">Describe the bike appearance for placeholder images</p>
+            <div className="grid gap-3 border rounded-lg p-4 bg-muted/30">
+              <Label>Bike Images</Label>
+
+              {/* File upload */}
+              <div className="grid gap-2">
+                <Label htmlFor="file-upload" className="text-sm font-normal">
+                  Upload from device
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="file-upload"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="cursor-pointer"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => document.getElementById("file-upload")?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* URL input */}
+              <div className="grid gap-2">
+                <Label htmlFor="image-url" className="text-sm font-normal">
+                  Or add image URL
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="image-url"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="https://example.com/bike-image.jpg"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        handleAddImageUrl()
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" size="icon" onClick={handleAddImageUrl}>
+                    <LinkIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Image preview */}
+              {images.length > 0 && (
+                <div className="grid gap-2">
+                  <Label className="text-sm font-normal">
+                    Preview ({images.length} image{images.length !== 1 ? "s" : ""})
+                  </Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {images.map((img, index) => (
+                      <div
+                        key={index}
+                        className="relative group aspect-video rounded-lg overflow-hidden border bg-background"
+                      >
+                        <img
+                          src={img || "/placeholder.svg"}
+                          alt={`Bike ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleRemoveImage(index)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                {images.length === 0
+                  ? "Add at least one image. If no images are added, placeholder images will be used."
+                  : "You can add more images or remove existing ones by hovering over them."}
+              </p>
             </div>
           </div>
 
