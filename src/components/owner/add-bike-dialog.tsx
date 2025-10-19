@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useStore } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, X, Upload, LinkIcon } from "lucide-react"
+import { createBike } from "@/services/bikeService"
+import GoogleMapPicker from "@/components/maps/google-map-picker"
 
 export function AddBikeDialog() {
   const { currentUser, addBike } = useStore()
@@ -31,17 +33,38 @@ export function AddBikeDialog() {
     condition: "Excellent" as "Excellent" | "Good" | "Fair" | "Needs Maintenance",
     address: "",
   })
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>({})
   const [images, setImages] = useState<string[]>([])
   const [imageUrl, setImageUrl] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const mapRef = useRef<HTMLDivElement | null>(null)
+  const mapInstanceRef = useRef<any | null>(null)
+  const markerRef = useRef<any | null>(null)
+  const [mapReady, setMapReady] = useState(false)
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [geocoding, setGeocoding] = useState(false)
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
 
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
+    const maxSize = 2 * 1024 * 1024 // 2MB
+
     Array.from(files).forEach((file) => {
+      if (!allowedTypes.includes(file.type)) {
+        setErrors((s) => ({ ...s, images: "Only PNG, JPG or WEBP images are allowed" }))
+        return
+      }
+      if (file.size > maxSize) {
+        setErrors((s) => ({ ...s, images: "Each image must be under 2MB" }))
+        return
+      }
+
       const reader = new FileReader()
       reader.onloadend = () => {
         setImages((prev) => [...prev, reader.result as string])
+        setErrors((s) => ({ ...s, images: undefined }))
       }
       reader.readAsDataURL(file)
     })
@@ -51,9 +74,23 @@ export function AddBikeDialog() {
   }
 
   const handleAddImageUrl = () => {
-    if (imageUrl.trim()) {
-      setImages((prev) => [...prev, imageUrl.trim()])
+    const url = imageUrl.trim()
+    if (!url) return
+
+    // basic URL validation
+    try {
+      const parsed = new URL(url)
+      const allowedExtensions = [".png", ".jpg", ".jpeg", ".webp"]
+      if (!allowedExtensions.some((ext) => parsed.pathname.toLowerCase().endsWith(ext))) {
+        setErrors((s) => ({ ...s, images: "Image URL must point to a PNG/JPG/WEBP file" }))
+        return
+      }
+
+      setImages((prev) => [...prev, url])
       setImageUrl("")
+      setErrors((s) => ({ ...s, images: undefined }))
+    } catch (err) {
+      setErrors((s) => ({ ...s, images: "Please enter a valid URL" }))
     }
   }
 
@@ -61,18 +98,37 @@ export function AddBikeDialog() {
     setImages((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validateInputFields = ()  => {
+    const newErrors: Record<string, string> = {}
+    if (!formData.name.trim()) newErrors.name = "Name is required"
+    if (!formData.description.trim()) newErrors.description = "Description is required"
+    if (!formData.price.trim()) newErrors.price = "Price is required"
+    else if (Number.isNaN(Number(formData.price)) || Number(formData.price) <= 0)
+      newErrors.price = "Price must be a number greater than 0"
+    if (!formData.address.trim()) newErrors.address = "Address is required"
+
+    if (images.length === 0) {
+      newErrors.images = "Please add at least one image"
+    }
+
+    // require a selected location (address will be filled via map or manually)
+    if (!formData.address.trim() && !selectedLocation) {
+      newErrors.address = "Please pick a location on the map or enter an address"
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    validateInputFields()
+    const bikeImages = images.length > 0 ? images : [
+      `/placeholder.svg?height=400&width=600&query=${encodeURIComponent(formData.name)}`,
+      `/placeholder.svg?height=400&width=600&query=${encodeURIComponent(formData.name)}%20side%20view`,
+    ]
 
-    const bikeImages =
-      images.length > 0
-        ? images
-        : [
-            `/placeholder.svg?height=400&width=600&query=${formData.name}`,
-            `/placeholder.svg?height=400&width=600&query=${formData.name} side view`,
-          ]
-
-    addBike({
+    const payload = {
       ownerId: currentUser!.id,
       name: formData.name,
       description: formData.description,
@@ -80,24 +136,162 @@ export function AddBikeDialog() {
       category: formData.category,
       condition: formData.condition,
       images: bikeImages,
-      location: {
-        lat: 40.7128 + Math.random() * 0.1,
-        lng: -74.006 + Math.random() * 0.1,
-        address: formData.address,
-      },
+      location: selectedLocation
+        ? { lat: selectedLocation.lat, lng: selectedLocation.lng, address: formData.address }
+        : {
+            lat: 40.7128 + Math.random() * 0.1,
+            lng: -74.006 + Math.random() * 0.1,
+            address: formData.address,
+          },
       available: true,
-    })
+    }
 
-    setFormData({
-      name: "",
-      description: "",
-      price: "",
-      category: "Mountain",
-      condition: "Excellent",
-      address: "",
-    })
-    setImages([])
-    setOpen(false)
+    if(!validateInputFields()) {
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const preSigned = await createBike(payload);
+      console.log(preSigned)
+
+      addBike(payload)
+
+      setFormData({
+        name: "",
+        description: "",
+        price: "",
+        category: "Mountain",
+        condition: "Excellent",
+        address: "",
+      })
+      setImages([])
+      setErrors({})
+      setOpen(false)
+    } catch (err: any) {
+      setErrors((s) => ({ ...s, submit: err?.message || 'Failed to create bike on server' }))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Initialize leaflet map inside dialog
+  useEffect(() => {
+    if (!mapRef.current || mapInstanceRef.current) return
+
+    if (!document.getElementById("leaflet-css")) {
+      const link = document.createElement("link")
+      link.id = "leaflet-css"
+      link.rel = "stylesheet"
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      document.head.appendChild(link)
+    }
+
+    const init = async () => {
+  // @ts-ignore - leaflet types are not installed in this workspace
+  const L: any = await import("leaflet")
+      const map = L.map(mapRef.current!).setView([40.7489, -73.968], 13)
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(map)
+
+      // Fix marker icons
+      delete (L.Icon.Default.prototype as any)._getIconUrl
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      })
+
+  map.on("click", async (e: any) => {
+        const { lat, lng } = e.latlng
+        setSelectedLocation({ lat, lng })
+
+        if (markerRef.current) markerRef.current.remove()
+        markerRef.current = L.marker([lat, lng]).addTo(map)
+
+        // Reverse geocode with Nominatim
+        try {
+          setGeocoding(true)
+          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
+          const res = await fetch(url)
+          if (res.ok) {
+            const json = await res.json()
+            if (json && json.display_name) {
+              setFormData((f) => ({ ...f, address: json.display_name }))
+              setErrors((s) => ({ ...s, address: undefined }))
+            }
+          }
+        } catch (err) {
+          // ignore geocoding errors
+        } finally {
+          setGeocoding(false)
+        }
+      })
+
+      mapInstanceRef.current = map
+      setMapReady(true)
+    }
+
+    void init()
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
+      }
+    }
+  }, [mapRef])
+
+  const useMyLocation = () => {
+    // Modernized: use async/await, dynamic import of Leaflet (if present), and Nominatim reverse geocoding.
+    if (!navigator.geolocation) return
+
+    ;(async () => {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject),
+        )
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+
+        setSelectedLocation({ lat, lng })
+
+        // If the embedded Leaflet map is available, add a marker and center the view.
+        if (mapInstanceRef.current) {
+          try {
+            // dynamically import Leaflet (we used this pattern in the map init)
+            // @ts-ignore
+            const L: any = await import("leaflet")
+            if (markerRef.current) markerRef.current.remove()
+            markerRef.current = L.marker([lat, lng]).addTo(mapInstanceRef.current)
+            mapInstanceRef.current.setView([lat, lng], 13)
+          } catch (e) {
+            // ignore marker placement errors
+          }
+        }
+
+        // Reverse geocode via Nominatim (works without API key)
+        try {
+          setGeocoding(true)
+          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
+          const res = await fetch(url)
+          if (res.ok) {
+            const json = await res.json()
+            if (json && json.display_name) {
+              setFormData((f) => ({ ...f, address: json.display_name }))
+              setErrors((s) => ({ ...s, address: undefined }))
+            }
+          }
+        } catch (e) {
+          // ignore geocoding errors
+        } finally {
+          setGeocoding(false)
+        }
+      } catch (err) {
+        // geolocation permission denied or unavailable
+      }
+    })()
   }
 
   return (
@@ -124,6 +318,7 @@ export function AddBikeDialog() {
                 placeholder="Mountain Explorer Pro"
                 required
               />
+              {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
             </div>
 
             <div className="grid gap-2">
@@ -135,6 +330,7 @@ export function AddBikeDialog() {
                 placeholder="High-performance mountain bike perfect for trails"
                 required
               />
+              {errors.description && <p className="text-xs text-red-500">{errors.description}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -148,6 +344,7 @@ export function AddBikeDialog() {
                   placeholder="25"
                   required
                 />
+                {errors.price && <p className="text-xs text-red-500">{errors.price}</p>}
               </div>
 
               <div className="grid gap-2">
@@ -197,6 +394,23 @@ export function AddBikeDialog() {
                 placeholder="123 Bike Lane, New York, NY"
                 required
               />
+              {errors.address && <p className="text-xs text-red-500">{errors.address}</p>}
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  className="text-sm text-primary underline"
+                  onClick={() => useMyLocation()}
+                >
+                  Use my current location
+                </button>
+                {geocoding && <span className="text-xs text-muted-foreground">Looking up address…</span>}
+              </div>
+              <div className="mt-2">
+                <GoogleMapPicker center={selectedLocation ?? undefined} marker={selectedLocation} onSelect={(loc) => {
+                  setSelectedLocation({ lat: loc.lat, lng: loc.lng })
+                  setFormData((f) => ({ ...f, address: loc.address ?? f.address }))
+                }} />
+              </div>
             </div>
 
             <div className="grid gap-3 border rounded-lg p-4 bg-muted/30">
@@ -288,6 +502,7 @@ export function AddBikeDialog() {
                   ? "Add at least one image. If no images are added, placeholder images will be used."
                   : "You can add more images or remove existing ones by hovering over them."}
               </p>
+              {errors.images && <p className="text-xs text-red-500">{errors.images}</p>}
             </div>
           </div>
 
@@ -295,7 +510,10 @@ export function AddBikeDialog() {
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit">Add Bike</Button>
+            <div className="flex flex-col items-end gap-2">
+              {errors.submit && <p className="text-xs text-red-500">{errors.submit}</p>}
+              <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Adding...' : 'Add Bike'}</Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
