@@ -19,11 +19,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, X, Upload, LinkIcon } from "lucide-react"
-import { createBike } from "@/services/bikeService"
+import { createBike, getPreSignedUrl } from "@/services/bikeService"
 import GoogleMapPicker from "@/components/maps/google-map-picker"
+import axiosCall, { uploadToS3 } from "../axios/app"
 
 export function AddBikeDialog() {
-  const { currentUser, addBike } = useStore()
+  const { currentUser } = useStore()
   const [open, setOpen] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
@@ -32,26 +33,36 @@ export function AddBikeDialog() {
     category: "Mountain",
     condition: "Excellent" as "Excellent" | "Good" | "Fair" | "Needs Maintenance",
     address: "",
+    city: "",
+    street: "",
+    country: "",
+    state: "",
+    postalCode: "",
+    town: "",
+    village: ""
   })
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({})
   const [images, setImages] = useState<string[]>([])
+  const [files, setFiles] = useState<File | null>(null)
   const [imageUrl, setImageUrl] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const mapRef = useRef<HTMLDivElement | null>(null)
   const mapInstanceRef = useRef<any | null>(null)
   const markerRef = useRef<any | null>(null)
   const [mapReady, setMapReady] = useState(false)
+  const [presigned, setPresigned] = useState<any>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [geocoding, setGeocoding] = useState(false)
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
 
     const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"]
     const maxSize = 2 * 1024 * 1024 // 2MB
-
-    Array.from(files).forEach((file) => {
+      const presigned = await getPreSignedUrl(files[0].name, files[0].type);
+      setPresigned(presigned.data?.uploadURL);
+      Array.from(files).forEach((file) => {
       if (!allowedTypes.includes(file.type)) {
         setErrors((s) => ({ ...s, images: "Only PNG, JPG or WEBP images are allowed" }))
         return
@@ -67,12 +78,16 @@ export function AddBikeDialog() {
         setErrors((s) => ({ ...s, images: undefined }))
       }
       reader.readAsDataURL(file)
+      setFiles(file)
     })
 
-    // Reset input
     e.target.value = ""
   }
 
+  const addBike = async (payload: any) => {
+    const bike = await axiosCall.post('bikes', payload);
+
+  }
   const handleAddImageUrl = () => {
     const url = imageUrl.trim()
     if (!url) return
@@ -128,12 +143,22 @@ export function AddBikeDialog() {
       `/placeholder.svg?height=400&width=600&query=${encodeURIComponent(formData.name)}%20side%20view`,
     ]
 
+    console.log(images)
+
     const payload = {
       ownerId: currentUser!.id,
       name: formData.name,
       description: formData.description,
       price: Number.parseFloat(formData.price),
       category: formData.category,
+      address: formData.address,
+      city: formData.city,
+      street: formData.street,
+      country: formData.country,
+      state: formData.state,
+      postalCode: formData.postalCode,
+      town: formData.town,
+      village: formData.village,
       condition: formData.condition,
       images: bikeImages,
       location: selectedLocation
@@ -152,22 +177,30 @@ export function AddBikeDialog() {
 
     setIsSubmitting(true)
     try {
-      const preSigned = await createBike(payload);
-      console.log(preSigned)
-
+       const response = await uploadToS3(files!, presigned)
+      console.log(response)
+      // console.log(preSigned)
+// 
       addBike(payload)
 
       setFormData({
-        name: "",
-        description: "",
-        price: "",
+        name: "test",
+        description: "test",
+        price: "22",
+        village: "",
+        city: "",
+        street: "",
+        country: "",
+        state: "",
+        postalCode: "",
+        town: "",
         category: "Mountain",
         condition: "Excellent",
         address: "",
       })
       setImages([])
       setErrors({})
-      setOpen(false)
+      // setOpen(false)
     } catch (err: any) {
       setErrors((s) => ({ ...s, submit: err?.message || 'Failed to create bike on server' }))
     } finally {
@@ -278,8 +311,10 @@ export function AddBikeDialog() {
           const res = await fetch(url)
           if (res.ok) {
             const json = await res.json()
-            if (json && json.display_name) {
-              setFormData((f) => ({ ...f, address: json.display_name }))
+            if (json && json.address) {
+              const { road, city, town, village, state, postalCode, country } = json.address
+
+              setFormData((f) => ({ ...f, city, street: road, state, postalCode, country, town, village, address: json.display_name }))
               setErrors((s) => ({ ...s, address: undefined }))
             }
           }

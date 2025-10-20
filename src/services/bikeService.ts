@@ -16,7 +16,7 @@ export const createBike = async (payload:any ) => {
 
 export const getPreSignedUrl = async (fileName: string, fileType: string) => {
     try {
-        const response: any = await axiosCall.get(`file-upload/presigned-url?${fileName}&${fileType})`);
+        const response: any = await axiosCall.get(`/file-upload/presigned?fileName=${fileName}&fileType${fileType})`);
         return response.data;
     } catch (error: any) {
         return { success: false, error: error.message || "Failed to get pre-signed URL" };
