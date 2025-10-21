@@ -146,7 +146,7 @@ export function GoogleMapPicker({ center, marker, onSelect }: Props) {
     if (!script) {
       script = document.createElement("script")
       script.id = scriptId
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}`
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
       script.async = true
       script.defer = true
       script.onload = () => {
@@ -176,6 +176,30 @@ export function GoogleMapPicker({ center, marker, onSelect }: Props) {
       // Do not remove the global script — other components may rely on it
     }
   }, [center, marker, onSelect])
+
+  // React to external center/marker changes without reinitializing the map
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !(window as any).google || !(window as any).google.maps) return
+
+    if (center) {
+      try {
+        map.setCenter(center)
+      } catch {}
+    }
+
+    if (marker) {
+      try {
+        if (markerRef.current) markerRef.current.setMap(null)
+        // @ts-ignore
+        markerRef.current = new (window as any).google.maps.Marker({ position: marker, map })
+      } catch {}
+    } else if (marker === null && markerRef.current) {
+      // explicit null clears marker
+      try { markerRef.current.setMap(null) } catch {}
+      markerRef.current = null
+    }
+  }, [center, marker])
 
   return (
     <div className="relative">

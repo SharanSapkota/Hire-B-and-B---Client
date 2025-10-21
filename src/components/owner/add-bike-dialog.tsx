@@ -49,6 +49,8 @@ export function AddBikeDialog() {
   const [presigned, setPresigned] = useState<any>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [geocoding, setGeocoding] = useState(false)
+  const [suggestions, setSuggestions] = useState<Array<{ description: string; placeId: string }>>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -207,6 +209,7 @@ export function AddBikeDialog() {
   const useMyLocation = () => {
     if (!navigator.geolocation) return
 
+    setGeocoding(true)
     ;(async () => {
       try {
         const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
@@ -217,27 +220,113 @@ export function AddBikeDialog() {
 
         setSelectedLocation({ lat, lng })
 
-        try {
-          setGeocoding(true)
-          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-          const res = await fetch(url)
-          if (res.ok) {
-            const json = await res.json()
-            if (json && json.address) {
-              const { road, city, town, village, state, postalCode, country } = json.address
-              setFormData((f) => ({ ...f, city, street: road, state, postalCode, country, town, village, address: json.display_name }))
-              setErrors((s) => ({ ...s, address: undefined }))
-            }
+        // Use Google Maps Geocoder for better address formatting
+        const g = (window as any).google
+        if (g && g.maps) {
+          try {
+            const geocoder = new g.maps.Geocoder()
+            geocoder.geocode({ location: { lat, lng } }, (results: any, status: string) => {
+              if (status === "OK" && results && results[0]) {
+                const result = results[0]
+                const address = result.formatted_address
+                const components = result.address_components || []
+                
+                // Extract address components
+                const addressData: any = {}
+                components.forEach((comp: any) => {
+                  const types = comp.types
+                  if (types.includes('route')) addressData.street = comp.long_name
+                  if (types.includes('locality')) addressData.city = comp.long_name
+                  if (types.includes('administrative_area_level_1')) addressData.state = comp.long_name
+                  if (types.includes('postal_code')) addressData.postalCode = comp.long_name
+                  if (types.includes('country')) addressData.country = comp.long_name
+                  if (types.includes('sublocality')) addressData.town = comp.long_name
+                  if (types.includes('neighborhood')) addressData.village = comp.long_name
+                })
+
+                setFormData((f) => ({ 
+                  ...f, 
+                  ...addressData,
+                  address: address 
+                }))
+                setErrors((s) => ({ ...s, address: undefined }))
+              }
+              setGeocoding(false)
+            })
+          } catch (e) {
+            setGeocoding(false)
           }
-        } catch (e) {
-          // ignore geocoding errors
-        } finally {
-          setGeocoding(false)
+        } else {
+          // Fallback to Nominatim if Google Maps not available
+          try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
+            const res = await fetch(url)
+            if (res.ok) {
+              const json = await res.json()
+              if (json && json.address) {
+                const { road, city, town, village, state, postalCode, country } = json.address
+                setFormData((f) => ({ ...f, city, street: road, state, postalCode, country, town, village, address: json.display_name }))
+                setErrors((s) => ({ ...s, address: undefined }))
+              }
+            }
+          } catch (e) {
+            // ignore geocoding errors
+          } finally {
+            setGeocoding(false)
+          }
         }
       } catch (err) {
+        setGeocoding(false)
         // geolocation permission denied or unavailable
       }
     })()
+  }
+
+  // Address autocomplete using Google Places
+  const handleAddressChange = (value: string) => {
+    setFormData((f) => ({ ...f, address: value }))
+    setErrors((s) => ({ ...s, address: undefined }))
+
+    const g = (window as any).google
+    if (!g || !g.maps || !g.maps.places || !value) {
+      setSuggestions([])
+      return
+    }
+    try {
+      const service = new g.maps.places.AutocompleteService()
+      service.getPlacePredictions({ input: value }, (preds: any[], status: string) => {
+        if (status === "OK" && preds?.length) {
+          setSuggestions(preds.map((p: any) => ({ description: p.description, placeId: p.place_id })))
+          setShowSuggestions(true)
+        } else {
+          setSuggestions([])
+          setShowSuggestions(false)
+        }
+      })
+    } catch {
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }
+
+  const handleSelectSuggestion = async (placeId: string) => {
+    const g = (window as any).google
+    if (!g || !g.maps) return
+    try {
+      const geocoder = new g.maps.Geocoder()
+      geocoder.geocode({ placeId }, (results: any, status: string) => {
+        if (status === "OK" && results && results[0]) {
+          const result = results[0]
+          const loc = result.geometry?.location
+          const lat = typeof loc?.lat === "function" ? loc.lat() : loc?.lat
+          const lng = typeof loc?.lng === "function" ? loc.lng() : loc?.lng
+          if (lat && lng) setSelectedLocation({ lat, lng })
+          setFormData((f) => ({ ...f, address: result.formatted_address }))
+          setShowSuggestions(false)
+          setSuggestions([])
+        }
+      })
+    } catch {}
   }
 
   return (
@@ -333,13 +422,32 @@ export function AddBikeDialog() {
 
             <div className="grid gap-2">
               <Label htmlFor="address">Location Address</Label>
-              <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                placeholder="123 Bike Lane, New York, NY"
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="address"
+                  value={formData.address}
+                  onChange={(e) => handleAddressChange(e.target.value)}
+                  onFocus={() => suggestions.length && setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  placeholder="Search address (Google Places)"
+                  required
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow">
+                    {suggestions.map((s, idx) => (
+                      <button
+                        key={s.placeId}
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-muted"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSelectSuggestion(s.placeId)}
+                      >
+                        {s.description}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {errors.address && <p className="text-xs text-red-500">{errors.address}</p>}
               <div className="mt-2 flex items-center gap-3">
                 <button
