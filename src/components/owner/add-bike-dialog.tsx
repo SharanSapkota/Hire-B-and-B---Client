@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState } from "react"
 import { useStore } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,10 +46,6 @@ export function AddBikeDialog() {
   const [files, setFiles] = useState<File | null>(null)
   const [imageUrl, setImageUrl] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const mapRef = useRef<HTMLDivElement | null>(null)
-  const mapInstanceRef = useRef<any | null>(null)
-  const markerRef = useRef<any | null>(null)
-  const [mapReady, setMapReady] = useState(false)
   const [presigned, setPresigned] = useState<any>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [geocoding, setGeocoding] = useState(false)
@@ -208,76 +204,7 @@ export function AddBikeDialog() {
     }
   }
 
-  // Initialize leaflet map inside dialog
-  useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return
-
-    if (!document.getElementById("leaflet-css")) {
-      const link = document.createElement("link")
-      link.id = "leaflet-css"
-      link.rel = "stylesheet"
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      document.head.appendChild(link)
-    }
-
-    const init = async () => {
-  // @ts-ignore - leaflet types are not installed in this workspace
-  const L: any = await import("leaflet")
-      const map = L.map(mapRef.current!).setView([40.7489, -73.968], 13)
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map)
-
-      // Fix marker icons
-      delete (L.Icon.Default.prototype as any)._getIconUrl
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-      })
-
-  map.on("click", async (e: any) => {
-        const { lat, lng } = e.latlng
-        setSelectedLocation({ lat, lng })
-
-        if (markerRef.current) markerRef.current.remove()
-        markerRef.current = L.marker([lat, lng]).addTo(map)
-
-        // Reverse geocode with Nominatim
-        try {
-          setGeocoding(true)
-          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
-          const res = await fetch(url)
-          if (res.ok) {
-            const json = await res.json()
-            if (json && json.display_name) {
-              setFormData((f) => ({ ...f, address: json.display_name }))
-              setErrors((s) => ({ ...s, address: undefined }))
-            }
-          }
-        } catch (err) {
-          // ignore geocoding errors
-        } finally {
-          setGeocoding(false)
-        }
-      })
-
-      mapInstanceRef.current = map
-      setMapReady(true)
-    }
-
-    void init()
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove()
-        mapInstanceRef.current = null
-      }
-    }
-  }, [mapRef])
-
   const useMyLocation = () => {
-    // Modernized: use async/await, dynamic import of Leaflet (if present), and Nominatim reverse geocoding.
     if (!navigator.geolocation) return
 
     ;(async () => {
@@ -290,21 +217,6 @@ export function AddBikeDialog() {
 
         setSelectedLocation({ lat, lng })
 
-        // If the embedded Leaflet map is available, add a marker and center the view.
-        if (mapInstanceRef.current) {
-          try {
-            // dynamically import Leaflet (we used this pattern in the map init)
-            // @ts-ignore
-            const L: any = await import("leaflet")
-            if (markerRef.current) markerRef.current.remove()
-            markerRef.current = L.marker([lat, lng]).addTo(mapInstanceRef.current)
-            mapInstanceRef.current.setView([lat, lng], 13)
-          } catch (e) {
-            // ignore marker placement errors
-          }
-        }
-
-        // Reverse geocode via Nominatim (works without API key)
         try {
           setGeocoding(true)
           const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
@@ -313,7 +225,6 @@ export function AddBikeDialog() {
             const json = await res.json()
             if (json && json.address) {
               const { road, city, town, village, state, postalCode, country } = json.address
-
               setFormData((f) => ({ ...f, city, street: road, state, postalCode, country, town, village, address: json.display_name }))
               setErrors((s) => ({ ...s, address: undefined }))
             }
