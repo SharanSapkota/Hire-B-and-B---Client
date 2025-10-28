@@ -10,17 +10,33 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Bike, AlertCircle } from "lucide-react"
+import axiosCall from "../axios/app"
 
 interface LoginProps {
   onSwitchToSignup: () => void
 }
 
 export function Login({ onSwitchToSignup }: LoginProps) {
-  const login = useStore((state) => state.login)
+  // const login = useStore((state) => state.login)
+  const setCurrentUser = useStore((state) => state.setCurrentUser)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  const login = async (email: string, password: string) => {
+    try {
+      const response: any = await axiosCall.post("auth/login", { email, password })
+      if (response.success) {
+        setCurrentUser(response.data)
+      } else {
+        return { success: false, error: response.error || "Login failed" }
+      }
+      return response
+    } catch (error: any) {
+      return { success: false, error: error.message || "Login failed" }
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,10 +58,10 @@ export function Login({ onSwitchToSignup }: LoginProps) {
 
     await new Promise((resolve) => setTimeout(resolve, 500))
 
-    const result = login(email, password)
+    const result: any = await login(email, password)
 
-    if (!result.success) {
-      setError(result.error || "Login failed")
+    if (!result?.success) {
+      setError(result?.error || "Login failed")
     }
 
     setIsLoading(false)
