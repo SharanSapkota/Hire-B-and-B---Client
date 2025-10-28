@@ -29,13 +29,13 @@ export function BikesNearbyMap() {
 
   console.log("[v0] Available bikes:", availableBikes.length)
 
-  // ✅ Get user location
+  // Get user location
   useEffect(() => {
     const currentLocation = getCurrentLocation();
     setUserLocation(currentLocation)
   }, [])
 
-  // ✅ Load Google Maps script safely
+  // Load Google Maps
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
     if (!key || !mapRef.current) return
@@ -45,7 +45,6 @@ export function BikesNearbyMap() {
     const scriptId = "google-maps-js"
     let script = document.getElementById(scriptId) as HTMLScriptElement | null
 
-    // ✅ Only add script once
     if (!script) {
       script = document.createElement("script")
       script.id = scriptId
@@ -53,7 +52,7 @@ export function BikesNearbyMap() {
       script.async = true
       script.defer = true
 
-      // ✅ Initialize map only after both script + userLocation are ready
+      // Initialize map only after both script + userLocation are ready
       script.onload = () => {
         if (userLocation) {
           loadGoogleMaps()
@@ -68,7 +67,7 @@ export function BikesNearbyMap() {
     }
   }, [userLocation])
 
-  // ✅ Initialize Google Map
+  // Initialize Google Map
   const loadGoogleMaps = () => {
     if (!(window as any).google || !(window as any).google.maps) {
       console.warn("[Google Maps] Not ready yet")
@@ -96,7 +95,7 @@ export function BikesNearbyMap() {
     }
   }
 
-  // ✅ Add user location marker
+  // Add user location marker
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !userLocation) return
 
@@ -134,7 +133,7 @@ export function BikesNearbyMap() {
     console.log("[Google Maps] User marker added")
   }, [mapReady, userLocation])
 
-  // ✅ Add bike markers
+  // Add bike markers
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || availableBikes.length === 0) return
 
@@ -143,7 +142,6 @@ export function BikesNearbyMap() {
     const { map } = mapInstanceRef.current
     const g = (window as any).google.maps
 
-    // Clear existing bike markers
     mapInstanceRef.current.markers.forEach((marker: any) => marker.setMap(null))
     mapInstanceRef.current.markers = []
 
@@ -196,7 +194,6 @@ export function BikesNearbyMap() {
       mapInstanceRef.current?.markers.push(marker)
     })
 
-    // ✅ Safe map fit
     if (map && availableBikes.length > 0) {
       const bounds = new g.LatLngBounds()
       availableBikes.forEach((bike) => bounds.extend(bike.location))
