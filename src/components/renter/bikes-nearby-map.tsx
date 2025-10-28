@@ -8,6 +8,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { MapPin, DollarSign, Star, Navigation } from "lucide-react"
 import { BikeDetailsDialog } from "./bike-details-dialog"
+import { getCurrentLocation } from "../maps/getCurrentLocation"
+
+interface GoogleMapsInstance {
+  map: any
+  markers: any[]
+  userMarker: any | null
+}
 
 export function BikesNearbyMap() {
   const { bikes } = useStore()
@@ -16,267 +23,191 @@ export function BikesNearbyMap() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
-  const mapInstanceRef = useRef<any>(null)
-  const markersRef = useRef<any[]>([])
+  const mapInstanceRef = useRef<GoogleMapsInstance | null>(null)
 
   const availableBikes = bikes.filter((bike) => bike.available)
 
   console.log("[v0] Available bikes:", availableBikes.length)
 
-  // Get user location
+  // ✅ Get user location
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          }
-          console.log("[v0] User location from GPS:", location)
-          setUserLocation(location)
-        },
-        (error) => {
-          console.log("[v0] Geolocation error, using default NYC location:", error)
-          const defaultLocation = {
-            lat: 40.7489,
-            lng: -73.968,
-          }
-          setUserLocation(defaultLocation)
-        },
-      )
-    } else {
-      console.log("[v0] Geolocation not supported, using default NYC location")
-      setUserLocation({
-        lat: 40.7489,
-        lng: -73.968,
-      })
-    }
+    const currentLocation = getCurrentLocation();
+    setUserLocation(currentLocation)
   }, [])
 
-  // Initialize Leaflet map
+  // ✅ Load Google Maps script safely
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!key || !mapRef.current) return
 
-    console.log("[v0] Initializing Leaflet map...")
+    console.log("[Google Maps] Checking existing script...")
 
-    // Add Leaflet CSS first
-    if (!document.getElementById("leaflet-css")) {
-      const link = document.createElement("link")
-      link.id = "leaflet-css"
-      link.rel = "stylesheet"
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      link.onload = () => {
-        console.log("[v0] Leaflet CSS loaded")
+    const scriptId = "google-maps-js"
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null
+
+    // ✅ Only add script once
+    if (!script) {
+      script = document.createElement("script")
+      script.id = scriptId
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places,geometry`
+      script.async = true
+      script.defer = true
+
+      // ✅ Initialize map only after both script + userLocation are ready
+      script.onload = () => {
+        if (userLocation) {
+          loadGoogleMaps()
+        } else {
+          console.warn("[Google Maps] Script loaded, waiting for user location...")
+        }
       }
-      document.head.appendChild(link)
+
+      document.head.appendChild(script)
+    } else if ((window as any).google?.maps && userLocation) {
+      loadGoogleMaps()
+    }
+  }, [userLocation])
+
+  // ✅ Initialize Google Map
+  const loadGoogleMaps = () => {
+    if (!(window as any).google || !(window as any).google.maps) {
+      console.warn("[Google Maps] Not ready yet")
+      return false
     }
 
-    // Wait a bit for CSS to load, then initialize map
-    setTimeout(() => {
-      import("leaflet").then((L) => {
-        console.log("[v0] Leaflet library loaded")
+    try {
+      const g = (window as any).google.maps
 
-        // Initialize map centered on New York
-        const map = L.map(mapRef.current!).setView([40.7489, -73.968], 13)
+      if (!mapRef.current) return false
 
-        // Add OpenStreetMap tiles
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-          maxZoom: 19,
-        }).addTo(map)
-
-        console.log("[v0] Map tiles added")
-
-        mapInstanceRef.current = map
-        setMapReady(true)
-
-        // Fix for marker icons not showing
-        delete (L.Icon.Default.prototype as any)._getIconUrl
-        L.Icon.Default.mergeOptions({
-          iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-          iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-          shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-        })
-
-        console.log("[v0] Map initialization complete")
+      const map = new g.Map(mapRef.current, {
+        center: userLocation || { lat: 40.7489, lng: -73.968 },
+        zoom: 15,
       })
-    }, 100)
 
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove()
-        mapInstanceRef.current = null
-        setMapReady(false)
-      }
+      mapInstanceRef.current = { map, markers: [], userMarker: null }
+      setMapReady(true)
+
+      console.log("[Google Maps] Initialized successfully")
+      return true
+    } catch (err) {
+      console.error("[Google Maps] Initialization error:", err)
+      return false
     }
-  }, [])
+  }
 
-  // Add user location marker
+  // ✅ Add user location marker
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !userLocation) return
 
-    console.log("[v0] Adding user location marker at:", userLocation)
+    console.log("[Google Maps] Adding user location marker at:", userLocation)
 
-    import("leaflet").then((L) => {
-      const map = mapInstanceRef.current
+    const { map } = mapInstanceRef.current
+    const g = (window as any).google.maps
 
-      const userIcon = L.divIcon({
-        className: "custom-user-marker",
-        html: `
-          <div style="position: relative;">
-            <div style="position: absolute; inset: 0; animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;">
-              <div style="height: 40px; width: 40px; border-radius: 50%; background-color: rgb(239, 68, 68); opacity: 0.5;"></div>
-            </div>
-            <div style="position: relative; height: 40px; width: 40px; border-radius: 50%; background-color: rgb(220, 38, 38); border: 3px solid white; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); display: flex; align-items: center; justify-content: center;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-            </div>
-          </div>
-        `,
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-      })
-
-      const userMarker = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
-        .addTo(map)
-        .bindPopup("<b>You are here</b>")
-
-      console.log("[v0] User marker added")
-
-      // Center map on user location
-      map.setView([userLocation.lat, userLocation.lng], 13)
-
-      return () => {
-        userMarker.remove()
-      }
-    })
-  }, [mapReady, userLocation])
-
-  // Add bike markers
-  useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current || availableBikes.length === 0) {
-      console.log("[v0] Not ready to add bike markers:", {
-        mapReady,
-        hasMap: !!mapInstanceRef.current,
-        bikesCount: availableBikes.length,
-      })
-      return
+    if (mapInstanceRef.current.userMarker) {
+      mapInstanceRef.current.userMarker.setMap(null)
     }
 
-    console.log("[v0] Adding bike markers for", availableBikes.length, "bikes")
+    const userIcon = {
+      path: g.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: "#ef4444",
+      fillOpacity: 1,
+      strokeColor: "#ffffff",
+      strokeWeight: 3,
+    }
 
-    import("leaflet").then((L) => {
-      const map = mapInstanceRef.current
+    const userMarker = new g.Marker({
+      position: userLocation,
+      map,
+      icon: userIcon,
+      title: "You are here",
+      animation: g.Animation.DROP,
+    })
 
-      // Clear existing markers
-      markersRef.current.forEach((marker) => marker.remove())
-      markersRef.current = []
+    mapInstanceRef.current.userMarker = userMarker
 
-      // Add bike markers
-      availableBikes.forEach((bike, index) => {
-        console.log(`[v0] Adding marker ${index + 1}:`, bike.name, "at", bike.location)
+    map.setCenter(userLocation)
+    map.setZoom(13)
 
-        const isSelected = selectedBike?.id === bike.id
+    console.log("[Google Maps] User marker added")
+  }, [mapReady, userLocation])
 
-        // Create custom bike icon
-        const bikeIcon = L.divIcon({
-          className: "custom-bike-marker",
-          html: `
-            <div style="position: relative; transform: scale(${isSelected ? 1.25 : 1}); transition: transform 0.2s;">
-              <div style="position: relative; height: 40px; width: 40px; border-radius: 50%; background-color: ${
-                isSelected ? "rgb(14, 165, 233)" : "rgb(20, 184, 166)"
-              }; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); display: flex; align-items: center; justify-content: center; border: 2px solid white;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="18.5" cy="17.5" r="3.5"/>
-                  <circle cx="5.5" cy="17.5" r="3.5"/>
-                  <circle cx="15" cy="5" r="1"/>
-                  <path d="M12 17.5V14l-3-3 4-3 2 3h2"/>
-                </svg>
-              </div>
-              <div style="position: absolute; bottom: -4px; right: -4px; background-color: white; border: 1px solid #e5e7eb; border-radius: 9999px; padding: 2px 6px; font-size: 10px; font-weight: bold; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
-                $${bike.price}
-              </div>
-            </div>
-          `,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20],
-        })
+  // ✅ Add bike markers
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || availableBikes.length === 0) return
 
-        const marker = L.marker([bike.location.lat, bike.location.lng], { icon: bikeIcon })
-          .addTo(map)
-          .bindPopup(
-            `
-            <div style="min-width: 200px;">
-              <h3 style="font-weight: 600; margin-bottom: 8px;">${bike.name}</h3>
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; color: #6b7280;">
-                <div style="display: flex; align-items: center; gap: 4px;">
-                  <span style="color: #fbbf24;">★</span>
-                  <span>${bike.rating}</span>
-                </div>
-                <span>•</span>
-                <span>$${bike.price}/day</span>
-              </div>
-              <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; background-color: ${getConditionColor(
-                  bike.condition,
-                )}; color: white;">
-                  ${bike.condition}
-                </span>
-              </div>
-              <p style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">${bike.location.address}</p>
-              <button 
-                onclick="window.selectBike('${bike.id}')" 
-                style="width: 100%; padding: 8px; background-color: rgb(14, 165, 233); color: white; border: none; border-radius: 6px; font-weight: 500; cursor: pointer;"
-              >
-                View Details
-              </button>
-            </div>
-          `,
-          )
-          .on("click", () => {
-            console.log("[v0] Bike marker clicked:", bike.name)
-            setSelectedBike(bike)
-            setDetailsOpen(true)
-          })
+    console.log("[Google Maps] Adding bike markers for", availableBikes.length, "bikes")
 
-        markersRef.current.push(marker)
+    const { map } = mapInstanceRef.current
+    const g = (window as any).google.maps
+
+    // Clear existing bike markers
+    mapInstanceRef.current.markers.forEach((marker: any) => marker.setMap(null))
+    mapInstanceRef.current.markers = []
+
+    let currentInfoWindow: any = null
+
+    availableBikes.forEach((bike) => {
+      const isSelected = selectedBike?.id === bike.id
+
+      const bikeIcon = {
+        path: g.SymbolPath.CIRCLE,
+        fillColor: isSelected ? "#0ea5e9" : "#14b8a6",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 3,
+        scale: 6,
+      }
+
+      const marker = new g.Marker({
+        position: { lat: bike.location.lat, lng: bike.location.lng },
+        map,
+        icon: bikeIcon,
+        title: bike.name,
+        animation: g.Animation.DROP,
       })
 
-      console.log("[v0] All bike markers added:", markersRef.current.length)
+      const infoContent = `
+        <div style="min-width: 280px; max-width: 320px; padding: 12px; font-family: system-ui, sans-serif;">
+          ${
+            bike.images && bike.images[0]
+              ? `<img src="${bike.images[0]}" alt="${bike.name}" style="width: 100%; height: 120px; border-radius: 8px; object-fit: cover;" />`
+              : `<div style="display: flex; align-items: center; justify-content: center; height: 120px; background: #ddd;">🚴</div>`
+          }
+          <h3 style="font-weight: 700; font-size: 18px; margin: 8px 0;">${bike.name}</h3>
+          <p style="font-size: 13px; color: #555;">${bike.description}</p>
+          <p style="font-size: 13px; color: #333;"><b>Price:</b> $${bike.price}/day</p>
+          <p style="font-size: 12px; color: #777;">Lat: ${bike.location.lat.toFixed(4)}, Lng: ${bike.location.lng.toFixed(4)}</p>
+        </div>
+      `
 
-      // Fit map to show all markers
-      if (availableBikes.length > 0) {
-        const bounds = L.latLngBounds(availableBikes.map((bike) => [bike.location.lat, bike.location.lng]))
-        if (userLocation) {
-          bounds.extend([userLocation.lat, userLocation.lng])
-        }
-        map.fitBounds(bounds, { padding: [50, 50] })
-        console.log("[v0] Map bounds adjusted to show all markers")
-      }
-    })
-  }, [mapReady, availableBikes, selectedBike, userLocation])
+      const infoWindow = new g.InfoWindow({ content: infoContent, maxWidth: 340 })
 
-  // Global function to select bike from popup
-  useEffect(() => {
-    ;(window as any).selectBike = (bikeId: string) => {
-      const bike = availableBikes.find((b) => b.id === bikeId)
-      if (bike) {
+      marker.addListener("click", () => {
+        if (currentInfoWindow) currentInfoWindow.close()
+        currentInfoWindow = infoWindow
+        infoWindow.open(map, marker)
         setSelectedBike(bike)
         setDetailsOpen(true)
-      }
+      })
+
+      mapInstanceRef.current?.markers.push(marker)
+    })
+
+    // ✅ Safe map fit
+    if (map && availableBikes.length > 0) {
+      const bounds = new g.LatLngBounds()
+      availableBikes.forEach((bike) => bounds.extend(bike.location))
+      if (userLocation) bounds.extend(userLocation)
+      map.fitBounds(bounds, { padding: { top: 60, right: 60, bottom: 60, left: 60 } })
     }
 
     return () => {
-      delete (window as any).selectBike
+      mapInstanceRef.current?.markers.forEach((m: any) => m.setMap(null))
     }
-  }, [availableBikes])
-
-  const handleMarkerClick = (bike: Bike) => {
-    setSelectedBike(bike)
-    setDetailsOpen(true)
-  }
+  }, [mapReady, availableBikes, selectedBike, userLocation])
 
   return (
     <div className="space-y-6">
@@ -366,16 +297,6 @@ export function BikesNearbyMap() {
       </div>
 
       {selectedBike && <BikeDetailsDialog bikeId={selectedBike.id} open={detailsOpen} onOpenChange={setDetailsOpen} />}
-
-      <style jsx global>{`
-        @keyframes ping {
-          75%,
-          100% {
-            transform: scale(2);
-            opacity: 0;
-          }
-        }
-      `}</style>
     </div>
   )
 }
