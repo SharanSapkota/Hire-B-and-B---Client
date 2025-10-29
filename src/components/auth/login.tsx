@@ -26,13 +26,31 @@ export function Login({ onSwitchToSignup }: LoginProps) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response: any = await axiosCall.post("auth/login", { email, password })
-      if (response.success) {
-        setCurrentUser(response.data)
-      } else {
-        return { success: false, error: response.error || "Login failed" }
-      }
-      return response
+      const data = {user: {
+            "id": 12,
+            "email": "renter@gmail.com",
+            "name": "Ram Sapkota",
+            "role": "USER"
+      }};
+      // const response: any = await axiosCall.post("auth/login", { email, password })
+      // if (response.success) {
+        setCurrentUser({
+          id: data.user.id.toString(),
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role as any,
+          rating: 0,
+          totalRentals: 0,
+          avatar: "",
+          verified: true,
+          phone: "",
+          bio: "",
+        })
+      // } else {
+      //   return { success: false, error: response.error || "Login failed" }
+      // }
+      return { success: true }
+      // return response
     } catch (error: any) {
       return { success: false, error: error.message || "Login failed" }
     }
